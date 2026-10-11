@@ -222,14 +222,14 @@ public final class ReactorSimulation {
         long[] powerPortPositions = controller.getCachedPowerPortPositions();
         long[] resourcePortPositions = controller.getCachedResourcePortPositions();
         if (rodPositions.length == 0 && (result.rodCount() > 0 || result.rodColumns() > 0)) {
-            controller.rebuildPartCaches(level, result);
+            controller.rebuildPartCachesIfNeeded(level, result);
             rodPositions = controller.getCachedRodPositions();
             powerPortPositions = controller.getCachedPowerPortPositions();
             resourcePortPositions = controller.getCachedResourcePortPositions();
         }
         if (rodPositions.length == 0) {
             // Fallback (should be rare): rebuild from bounds.
-            controller.rebuildPartCaches(level, result);
+            controller.rebuildPartCachesIfNeeded(level, result);
             rodPositions = controller.getCachedRodPositions();
             powerPortPositions = controller.getCachedPowerPortPositions();
             resourcePortPositions = controller.getCachedResourcePortPositions();
@@ -535,7 +535,7 @@ public final class ReactorSimulation {
 
         long[] resourcePortPositions = controller.getCachedResourcePortPositions();
         if (resourcePortPositions.length == 0) {
-            controller.rebuildPartCaches(level, result);
+            controller.rebuildPartCachesIfNeeded(level, result);
             resourcePortPositions = controller.getCachedResourcePortPositions();
         }
 

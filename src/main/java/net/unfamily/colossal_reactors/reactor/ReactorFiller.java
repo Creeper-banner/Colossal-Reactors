@@ -36,7 +36,7 @@ public final class ReactorFiller {
         List<ResourcePortBlockEntity> insertPorts = new ArrayList<>();
         long[] resourcePorts = controller.getCachedResourcePortPositions();
         if (resourcePorts.length == 0) {
-            controller.rebuildPartCaches(level, result);
+            controller.rebuildPartCachesIfNeeded(level, result);
             resourcePorts = controller.getCachedResourcePortPositions();
         }
         for (long lp : resourcePorts) {

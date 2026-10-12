@@ -23,7 +23,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Loads heat sink definitions from datapack JSON: data/colossal_reactors/reactor_heat_sinks/*.json.
@@ -48,7 +50,23 @@ public final class HeatSinkLoader {
     private static volatile List<HeatSinkDefinition> DEFINITIONS = List.of();
     private static List<HeatSinkDefinition> rawDatapackEntries = List.of();
 
+    /**
+     * Block state lookup cache for {@link #isHeatSinkBlock} / {@link #getModifiersForBlockOrDefault} (reactor
+     * validation and cache rebuilds walk every interior block). A new cache is started when the definitions,
+     * the registry access or the tags change.
+     */
+    private static volatile BlockCache blockCache;
+    private static volatile int tagGeneration;
+
+    private record BlockCache(List<HeatSinkDefinition> definitions, RegistryAccess registryAccess, int tagGeneration,
+                              Map<BlockState, Optional<HeatSinkModifiers>> entries) {}
+
     private HeatSinkLoader() {}
+
+    /** Call when tags were (re)bound, e.g. on {@code TagsUpdatedEvent}: drops cached block lookups. */
+    public static void onTagsUpdated() {
+        tagGeneration++;
+    }
 
     private static synchronized void rebuildDefinitions() {
         List<HeatSinkDefinition> next = new ArrayList<>();
@@ -200,7 +218,20 @@ public final class HeatSinkLoader {
      */
     public static boolean isHeatSinkBlock(BlockState state, RegistryAccess registryAccess) {
         if (state.isAir()) return true;
-        return getModifiersForBlock(state, registryAccess) != null;
+        return getModifiersForBlockCached(state, registryAccess) != null;
+    }
+
+    /** {@link #getModifiersForBlock} through {@link #blockCache}. */
+    private static HeatSinkModifiers getModifiersForBlockCached(BlockState state, RegistryAccess registryAccess) {
+        List<HeatSinkDefinition> definitions = DEFINITIONS;
+        int generation = tagGeneration;
+        BlockCache cache = blockCache;
+        if (cache == null || cache.definitions() != definitions || cache.registryAccess() != registryAccess
+                || cache.tagGeneration() != generation) {
+            cache = new BlockCache(definitions, registryAccess, generation, new ConcurrentHashMap<>());
+            blockCache = cache;
+        }
+        return cache.entries().computeIfAbsent(state, s -> Optional.ofNullable(getModifiersForBlock(s, registryAccess))).orElse(null);
     }
 
     /**
@@ -242,7 +273,7 @@ public final class HeatSinkLoader {
      * Same as getModifiersForBlock but returns (1.0, 1.0) for unknown blocks (e.g. when only used after validation).
      */
     public static HeatSinkModifiers getModifiersForBlockOrDefault(BlockState state, RegistryAccess registryAccess) {
-        HeatSinkModifiers m = getModifiersForBlock(state, registryAccess);
+        HeatSinkModifiers m = getModifiersForBlockCached(state, registryAccess);
         return m != null ? m : new HeatSinkModifiers(1.0, 1.0, 1.0);
     }
 

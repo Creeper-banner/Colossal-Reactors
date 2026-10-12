@@ -12,6 +12,7 @@ import net.minecraft.world.level.material.FluidState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
+import net.unfamily.colossal_reactors.ColossalReactors;
 
 import java.util.Map;
 import java.util.UUID;
@@ -24,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>Ender goo: random teleport (source or flowing) with cooldown.</li>
  * </ul>
  */
+@EventBusSubscriber(modid = ColossalReactors.MODID)
 public final class SpecialFluidEffects {
 
     /** Like iskautils freeze plate: set directly to 200 so damage (threshold 140) applies immediately. Stronger than plate. */

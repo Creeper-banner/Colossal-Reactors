@@ -45,7 +45,8 @@ public final class TurbineBuilderMetrics {
         RodBladeCounts blades = countRodsAndBlades(layout, rodPattern);
 
         int coilBlocks = 0;
-        if (!ElecCoilLoader.shouldSkipSolidCoilAutoPlacement(coilIndex)) {
+        if (!TurbineRodPatternLogic.skipsCoils(rodPattern)
+                && !ElecCoilLoader.shouldSkipSolidCoilAutoPlacement(coilIndex)) {
             coilBlocks = layout.crossSizeA() * layout.crossSizeB() * appliedCoils;
         }
 
@@ -94,7 +95,8 @@ public final class TurbineBuilderMetrics {
         RodBladeCounts blades = countRodsAndBlades(layout, rodPattern);
 
         int coilBlocks = 0;
-        if (!ElecCoilLoader.shouldSkipSolidCoilAutoPlacement(coilIndex)) {
+        if (!TurbineRodPatternLogic.skipsCoils(rodPattern)
+                && !ElecCoilLoader.shouldSkipSolidCoilAutoPlacement(coilIndex)) {
             coilBlocks = layout.crossSizeA() * layout.crossSizeB() * appliedCoils;
         }
 

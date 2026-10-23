@@ -267,6 +267,38 @@ public final class DatapackSelectorValidator {
         return out;
     }
 
+    public static List<String> filterChemicalSelectors(List<String> selectors) {
+        if (!validationEnabled()) return List.copyOf(selectors);
+        List<String> out = new ArrayList<>();
+        for (String selector : selectors) {
+            if (isResolvableChemicalSelector(selector)) {
+                out.add(selector);
+            } else {
+                LOGGER.debug("Dropped unresolved chemical selector: {}", selector);
+            }
+        }
+        return out;
+    }
+
+    /** Fluid, item, or Mek chemical ({@code %}) selectors — drops unresolved entries. */
+    public static List<String> filterMaterialSelectors(List<String> selectors) {
+        if (!validationEnabled()) return List.copyOf(selectors);
+        List<String> out = new ArrayList<>();
+        for (String selector : selectors) {
+            boolean ok = MaterialSelector.isChemicalPrefix(selector)
+                    ? isResolvableChemicalSelector(selector)
+                    : (selector != null && (selector.startsWith("#") || selector.contains(":")))
+                    ? isResolvableFluidSelector(selector) || isResolvableItemSelector(selector)
+                    : isResolvableItemSelector(selector) || isResolvableFluidSelector(selector);
+            if (ok) {
+                out.add(selector);
+            } else {
+                LOGGER.debug("Dropped unresolved material selector: {}", selector);
+            }
+        }
+        return out;
+    }
+
     @Nullable
     public static FuelDefinition sanitizeFuel(FuelDefinition def) {
         if (!validationEnabled()) return def;
@@ -277,20 +309,25 @@ public final class DatapackSelectorValidator {
         }
         FuelMedium inputMedium = FuelSubType.parseInput(normalizedSub);
         FuelMedium outputMedium = FuelSubType.parseOutput(normalizedSub);
-        if (inputMedium == FuelMedium.CHEMICAL || outputMedium == FuelMedium.CHEMICAL) {
-            LOGGER.debug("Skipped fuel {}: chemical sub_type requires Mekanism (not integrated on 26.x yet)", def.fuelId());
+        if ((inputMedium == FuelMedium.CHEMICAL || outputMedium == FuelMedium.CHEMICAL)
+                && !MekChemicalHelper.isLoaded()) {
+            LOGGER.debug("Skipped fuel {}: chemical sub_type requires Mekanism", def.fuelId());
             return null;
         }
-        List<String> inputs = inputMedium == FuelMedium.FLUID
-                ? filterFluidSelectors(def.inputs())
-                : filterItemSelectors(def.inputs());
+        List<String> inputs = switch (inputMedium) {
+            case FLUID -> filterFluidSelectors(def.inputs());
+            case CHEMICAL -> filterChemicalSelectors(def.inputs());
+            case ITEM -> filterItemSelectors(def.inputs());
+        };
         if (inputs.isEmpty()) {
             String fallback = def.fuelId().toString();
-            boolean ok = inputMedium == FuelMedium.FLUID
-                    ? isResolvableFluidSelector(fallback)
-                    : isResolvableItemSelector(fallback);
+            boolean ok = switch (inputMedium) {
+                case FLUID -> isResolvableFluidSelector(fallback);
+                case CHEMICAL -> isResolvableChemicalSelector("%" + fallback);
+                case ITEM -> isResolvableItemSelector(fallback);
+            };
             if (ok) {
-                inputs = List.of(fallback);
+                inputs = List.of(inputMedium == FuelMedium.CHEMICAL ? "%" + fallback : fallback);
             } else {
                 LOGGER.debug("Skipped fuel {}: no resolvable inputs", def.fuelId());
                 return null;
@@ -305,9 +342,11 @@ public final class DatapackSelectorValidator {
             LOGGER.debug("Skipped fuel {}: output '{}' does not match sub_type {}", def.fuelId(), output, normalizedSub);
             return null;
         }
-        boolean outOk = outputMedium == FuelMedium.FLUID
-                ? isResolvableFluidSelector(output)
-                : isResolvableItemSelector(output);
+        boolean outOk = switch (outputMedium) {
+            case FLUID -> isResolvableFluidSelector(output);
+            case CHEMICAL -> isResolvableChemicalSelector(output);
+            case ITEM -> isResolvableItemSelector(output);
+        };
         if (!outOk) {
             LOGGER.debug("Skipped fuel {}: unresolved output '{}'", def.fuelId(), output);
             return null;
@@ -320,29 +359,41 @@ public final class DatapackSelectorValidator {
     @Nullable
     public static CoolantDefinition sanitizeCoolant(CoolantDefinition def) {
         if (!validationEnabled()) return def;
-        List<String> inputs = filterFluidSelectors(def.inputs());
+        List<String> inputs = filterMaterialSelectors(def.inputs());
         if (inputs.isEmpty()) {
             String fallback = def.coolantId().toString();
-            if (isResolvableFluidSelector(fallback)) {
+            if (isResolvableFluidSelector(fallback) || isResolvableChemicalSelector("%" + fallback)) {
                 inputs = List.of(fallback);
             } else {
                 LOGGER.debug("Skipped coolant {}: no resolvable inputs", def.coolantId());
                 return null;
             }
         }
-        String output = def.output();
-        if (output == null || output.isBlank() || !isResolvableFluidSelector(output)) {
-            LOGGER.debug("Skipped coolant {}: unresolved output '{}'", def.coolantId(), output);
+        List<String> outputs = filterMaterialSelectors(def.outputs());
+        if (outputs.isEmpty() && def.output() != null && !def.output().isBlank()) {
+            String legacy = def.output();
+            if (isResolvableFluidSelector(legacy)
+                    || isResolvableChemicalSelector(legacy.startsWith("%") ? legacy : "%" + legacy)) {
+                outputs = List.of(legacy);
+            }
+        }
+        if (outputs.isEmpty()) {
+            LOGGER.debug("Skipped coolant {}: no resolvable outputs", def.coolantId());
             return null;
         }
-        String liquidOut = def.liquidOutputSelector();
-        if (liquidOut == null || liquidOut.isBlank() || !isResolvableFluidSelector(liquidOut)) {
-            LOGGER.debug("Skipped coolant {}: unresolved liquid output '{}'", def.coolantId(), liquidOut);
-            return null;
-        }
-        return new CoolantDefinition(def.coolantId(), inputs, output, def.outputs(), def.rfIncrementPercent(), def.mbDecrementPercent(),
+        CoolantDefinition built = new CoolantDefinition(def.coolantId(), inputs, def.output(), outputs,
+                def.rfIncrementPercent(), def.mbDecrementPercent(),
                 def.reduceRfProduction(), def.rfToCoolantFactor(), def.steamPerCoolant(), def.overheatingMultiplier(),
                 def.fluidColor(), def.outputColor(), def.overwritable());
+        String liquidOut = built.liquidOutputSelector();
+        String gasOut = built.gasOutputSelector();
+        boolean liquidOk = liquidOut != null && !liquidOut.isBlank() && isResolvableFluidSelector(liquidOut);
+        boolean gasOk = gasOut != null && isResolvableChemicalSelector(gasOut);
+        if (!liquidOk && !gasOk) {
+            LOGGER.debug("Skipped coolant {}: no resolvable liquid or chemical output", def.coolantId());
+            return null;
+        }
+        return built;
     }
 
     @Nullable
@@ -361,17 +412,25 @@ public final class DatapackSelectorValidator {
     @Nullable
     public static TurbineGenerationDefinition sanitizeTurbineGeneration(TurbineGenerationDefinition def) {
         if (!validationEnabled()) return def;
-        List<String> inputs = filterFluidSelectors(def.inputs());
+        List<String> inputs = filterMaterialSelectors(def.inputs());
         if (inputs.isEmpty()) {
             LOGGER.debug("Skipped turbine generation {}: no resolvable inputs", def.generationId());
             return null;
         }
-        String output = def.output();
-        if (output != null && !output.isBlank() && !isResolvableFluidSelector(output)) {
-            LOGGER.debug("Skipped turbine generation {}: unresolved output '{}'", def.generationId(), output);
+        List<String> outputs = filterMaterialSelectors(def.outputs());
+        if (outputs.isEmpty() && def.output() != null && !def.output().isBlank()) {
+            String legacy = def.output();
+            if (isResolvableFluidSelector(legacy)
+                    || isResolvableChemicalSelector(legacy.startsWith("%") ? legacy : "%" + legacy)) {
+                outputs = List.of(legacy);
+            }
+        }
+        if (outputs.isEmpty()) {
+            LOGGER.debug("Skipped turbine generation {}: no resolvable outputs", def.generationId());
             return null;
         }
-        return new TurbineGenerationDefinition(def.generationId(), inputs, output, def.outputs(), def.rfProduction(), def.overwritable());
+        return new TurbineGenerationDefinition(def.generationId(), inputs, def.output(), outputs,
+                def.rfProduction(), def.overwritable());
     }
 
     @Nullable
@@ -455,7 +514,7 @@ public final class DatapackSelectorValidator {
             if (!MaterialSelector.isChemicalPrefix(selector)) {
                 LOGGER.debug("Dropped heating coil chemical: invalid selector {}", selector);
                 chemical = null;
-            } else if (!MekChemicalHelper.isGasSupportEnabled()) {
+            } else if (!MekChemicalHelper.isLoaded() || !isResolvableChemicalSelector(selector)) {
                 chemical = null;
             }
         }

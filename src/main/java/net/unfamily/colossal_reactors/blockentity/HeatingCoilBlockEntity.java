@@ -707,7 +707,7 @@ public class HeatingCoilBlockEntity extends BlockEntity implements MenuProvider 
                         return MekChemicalHelper.rejectedInsertReturn(args);
                     }
                 }
-                if ("isChemicalValid".equals(name) && args != null) {
+                if (("isChemicalValid".equals(name) || "isValid".equals(name)) && args != null) {
                     Object stack = MekChemicalHelper.findChemicalStackInArgs(args);
                     if (stack != null && !MekChemicalHelper.isEmpty(stack) && !acceptsChemicalInput(stack)) {
                         return false;

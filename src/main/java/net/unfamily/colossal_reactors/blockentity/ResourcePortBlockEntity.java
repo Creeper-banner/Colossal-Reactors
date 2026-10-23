@@ -977,7 +977,7 @@ public class ResourcePortBlockEntity extends BlockEntity implements MenuProvider
                         return MekChemicalHelper.rejectedInsertReturn(args);
                     }
                 }
-                if ("isChemicalValid".equals(name)) {
+                if ("isChemicalValid".equals(name) || "isValid".equals(name)) {
                     if (allowChemicalFill()) {
                         Object stack = MekChemicalHelper.findChemicalStackInArgs(args);
                         if (stack != null && !MekChemicalHelper.isEmpty(stack)

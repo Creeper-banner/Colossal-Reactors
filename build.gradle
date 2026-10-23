@@ -157,11 +157,11 @@ dependencies {
     }
 
     // Recipe viewers on 26.x: JEI only (REI broken / @OnlyIn; no EMI NeoForge artifact).
-    compileOnly "curse.maven:jei-238222:7920926"
+    compileOnly "curse.maven:jei-238222:9009840"
 
     def recipeViewer = (project.findProperty('runtime_recipe_viewer') ?: 'none').toString()
     if (recipeViewer == 'jei') {
-        localRuntime "curse.maven:jei-238222:7920926"
+        localRuntime "curse.maven:jei-238222:9009840"
     }
 
     // Unofficial Mekanism Version Locked for 26.1.2 (optional at runtime)

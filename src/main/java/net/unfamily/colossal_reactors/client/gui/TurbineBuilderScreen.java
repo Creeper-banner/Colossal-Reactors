@@ -47,6 +47,7 @@ import net.unfamily.colossal_reactors.turbine.TurbineBuildMaterialCounter;
 import net.unfamily.colossal_reactors.turbine.TurbinePlacementAxis;
 import net.unfamily.colossal_reactors.turbine.TurbineGenerationDefinition;
 import net.unfamily.colossal_reactors.turbine.TurbineGenerationLoader;
+import net.unfamily.colossal_reactors.turbine.TurbineRodPatternLogic;
 import net.unfamily.colossal_reactors.turbine.TurbineSimulation;
 import org.jetbrains.annotations.Nullable;
 
@@ -746,12 +747,16 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
 
     /**
      * Panel order: (1) Status + simulation stats, blank line, (2) Required for build + material counts.
+     * Custom pattern: required-for-build only (stats are not determinable).
      */
     private int renderSimulationPanel(GuiGraphicsExtractor guiGraphics) {
         int y = SIM_PANEL_Y - simulationScrollbar.getScrollOffset();
         int contentStart = y;
-        y = renderSimulationStatusAndStats(guiGraphics, y);
-        y += SIM_LINE_HEIGHT;
+        boolean customPattern = menu.getRodPattern() == TurbineRodPatternLogic.PATTERN_CUSTOM;
+        if (!customPattern) {
+            y = renderSimulationStatusAndStats(guiGraphics, y);
+            y += SIM_LINE_HEIGHT;
+        }
         y = renderSimulationBuildRequirements(guiGraphics, y);
         return y - contentStart;
     }
@@ -796,6 +801,8 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
 
     private int renderMaterialCounts(GuiGraphicsExtractor guiGraphics, int y) {
         TurbineBuildMaterialCounter.BuildMaterialCounts counts = getMaterialCounts();
+        boolean customPattern = menu.getRodPattern() == TurbineRodPatternLogic.PATTERN_CUSTOM;
+        String unknown = "?";
         y = ReactorPanelText.drawMetricRow(guiGraphics, font, SIM_PANEL_X, y, SIM_LINE_HEIGHT,
                 "gui.colossal_reactors.turbine_builder.calculate.frame_casings.label",
                 Component.translatable("gui.colossal_reactors.turbine_builder.calculate.frame_casings.value",
@@ -811,15 +818,15 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
         y = ReactorPanelText.drawMetricRow(guiGraphics, font, SIM_PANEL_X, y, SIM_LINE_HEIGHT,
                 "gui.colossal_reactors.turbine_builder.calculate.rods.label",
                 Component.translatable("gui.colossal_reactors.turbine_builder.calculate.rods.value",
-                        GuiNumberFormat.format(counts.rods())));
+                        customPattern ? unknown : GuiNumberFormat.format(counts.rods())));
         y = ReactorPanelText.drawMetricRow(guiGraphics, font, SIM_PANEL_X, y, SIM_LINE_HEIGHT,
                 "gui.colossal_reactors.turbine_builder.calculate.rod_controllers.label",
                 Component.translatable("gui.colossal_reactors.turbine_builder.calculate.rod_controllers.value",
-                        GuiNumberFormat.format(counts.rodControllers())));
+                        customPattern ? "1" : GuiNumberFormat.format(counts.rodControllers())));
         y = ReactorPanelText.drawMetricRow(guiGraphics, font, SIM_PANEL_X, y, SIM_LINE_HEIGHT,
                 "gui.colossal_reactors.turbine_builder.calculate.blades.label",
                 Component.translatable("gui.colossal_reactors.turbine_builder.calculate.blades.value",
-                        GuiNumberFormat.format(counts.blades())));
+                        customPattern ? unknown : GuiNumberFormat.format(counts.blades())));
         y = ReactorPanelText.drawMetricRow(guiGraphics, font, SIM_PANEL_X, y, SIM_LINE_HEIGHT,
                 "gui.colossal_reactors.turbine_builder.calculate.coils.label",
                 Component.translatable("gui.colossal_reactors.turbine_builder.calculate.coils.value",

@@ -48,6 +48,7 @@ import net.unfamily.colossal_reactors.coolant.CoolantLoader;
 import net.unfamily.colossal_reactors.fuel.FuelLoader;
 import net.unfamily.colossal_reactors.reactor.ReactorBuildMaterialCounter;
 import net.unfamily.colossal_reactors.reactor.ReactorSimulation;
+import net.unfamily.colossal_reactors.reactor.RodPatternLogic;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -773,8 +774,11 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
     private int renderSimulationPanel(GuiGraphicsExtractor guiGraphics) {
         int y = SIM_PANEL_Y - simulationScrollbar.getScrollOffset();
         int contentStart = y;
-        y = renderSimulationStatusAndStats(guiGraphics, y);
-        y += SIM_LINE_HEIGHT;
+        boolean customPattern = menu.getRodPattern() == RodPatternLogic.PATTERN_CUSTOM;
+        if (!customPattern) {
+            y = renderSimulationStatusAndStats(guiGraphics, y);
+            y += SIM_LINE_HEIGHT;
+        }
         y = renderSimulationBuildRequirements(guiGraphics, y);
         return y - contentStart;
     }
@@ -827,6 +831,8 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
 
     private int renderMaterialCounts(GuiGraphicsExtractor guiGraphics, int y) {
         ReactorBuildMaterialCounter.BuildMaterialCounts counts = getMaterialCounts();
+        boolean customPattern = menu.getRodPattern() == RodPatternLogic.PATTERN_CUSTOM;
+        String unknown = "?";
         y = ReactorPanelText.drawMetricRow(guiGraphics, font, SIM_PANEL_X, y, SIM_LINE_HEIGHT,
                 "gui.colossal_reactors.reactor_builder.calculate.frame_casings.label",
                 Component.translatable("gui.colossal_reactors.reactor_builder.calculate.frame_casings.value",
@@ -838,11 +844,11 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
         y = ReactorPanelText.drawMetricRow(guiGraphics, font, SIM_PANEL_X, y, SIM_LINE_HEIGHT,
                 "gui.colossal_reactors.reactor_builder.calculate.rods.label",
                 Component.translatable("gui.colossal_reactors.reactor_builder.calculate.rods.value",
-                        GuiNumberFormat.format(counts.rods())));
+                        customPattern ? unknown : GuiNumberFormat.format(counts.rods())));
         y = ReactorPanelText.drawMetricRow(guiGraphics, font, SIM_PANEL_X, y, SIM_LINE_HEIGHT,
                 "gui.colossal_reactors.reactor_builder.calculate.rod_controllers.label",
                 Component.translatable("gui.colossal_reactors.reactor_builder.calculate.rod_controllers.value",
-                        GuiNumberFormat.format(counts.rodControllers())));
+                        customPattern ? unknown : GuiNumberFormat.format(counts.rodControllers())));
         y = ReactorPanelText.drawMetricRow(guiGraphics, font, SIM_PANEL_X, y, SIM_LINE_HEIGHT,
                 "gui.colossal_reactors.reactor_builder.calculate.heat_sinks.label",
                 Component.translatable("gui.colossal_reactors.reactor_builder.calculate.heat_sinks.value",

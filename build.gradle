@@ -163,6 +163,20 @@ dependencies {
     if (recipeViewer == 'jei') {
         localRuntime "curse.maven:jei-238222:7920926"
     }
+
+    // Unofficial Mekanism Version Locked for 26.1.2 (optional at runtime)
+    compileOnly "curse.maven:mekanism-version-locked-1713956:9267959"
+    compileOnly "curse.maven:mekanism-generators-version-locked-1713978:9169604"
+    compileOnly "curse.maven:mekanism-tools-version-locked-1713967:8991755"
+    compileOnly "curse.maven:mekanism-additions-version-locked-1713986:8991763"
+
+    def runtimeMek = (project.findProperty('runtime_mekanism') ?: 'false').toString()
+    if (runtimeMek == 'true') {
+        localRuntime "curse.maven:mekanism-version-locked-1713956:9267959"
+        localRuntime "curse.maven:mekanism-generators-version-locked-1713978:9169604"
+        localRuntime "curse.maven:mekanism-tools-version-locked-1713967:8991755"
+        localRuntime "curse.maven:mekanism-additions-version-locked-1713986:8991763"
+    }
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

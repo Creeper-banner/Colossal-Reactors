@@ -9,9 +9,12 @@ import mezz.jei.api.registration.IRecipeCatalystRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.resources.Identifier;
 import net.unfamily.colossal_reactors.client.gui.MelterScreen;
+import net.unfamily.colossal_reactors.client.gui.ReactorBuilderScreen;
+import net.unfamily.colossal_reactors.client.gui.TurbineBuilderScreen;
 import net.minecraft.world.item.ItemStack;
 import net.unfamily.colossal_reactors.block.ModBlocks;
 import net.unfamily.colossal_reactors.ColossalReactors;
+import net.unfamily.colossal_reactors.compat.jei.ghost.ColossalGhostIngredientHandler;
 import net.unfamily.colossal_reactors.coolant.CoolantLoader;
 import net.unfamily.colossal_reactors.fuel.FuelLoader;
 import net.unfamily.colossal_reactors.heatsink.HeatSinkLoader;
@@ -72,6 +75,8 @@ public class ColossalReactorsJeiPlugin implements IModPlugin {
                 MelterScreen.getProgressBarWidth(),
                 MelterScreen.getProgressBarHeight(),
                 MelterRecipeCategory.RECIPE_TYPE);
+        registration.addGhostIngredientHandler(ReactorBuilderScreen.class, new ColossalGhostIngredientHandler<>());
+        registration.addGhostIngredientHandler(TurbineBuilderScreen.class, new ColossalGhostIngredientHandler<>());
     }
 
     @Override

@@ -22,15 +22,15 @@ public final class ClientConfig {
             .define("disable_rod_fill_visual_update", false);
 
     public static final ModConfigSpec.ConfigValue<String> REACTOR_ROD_INSIDE_FALLBACK_COLOR = BUILDER
-            .comment("Fallback hex color for reactor rod inside fill when fuel JSON has no color. Default: #2f833b")
-            .define("rod_inside_fallback_color", "#2f833b");
+            .comment("Fallback hex color for reactor rod inside fill when fuel JSON has no color. Default: #45c159")
+            .define("rod_inside_fallback_color", "#45c159");
 
     static {
         BUILDER.pop();
     }
 
     public static int getRodInsideFallbackColorRgb() {
-        return parseHexRgb(REACTOR_ROD_INSIDE_FALLBACK_COLOR.get(), 0x2f833b);
+        return parseHexRgb(REACTOR_ROD_INSIDE_FALLBACK_COLOR.get(), 0x45c159);
     }
 
     public static int parseHexRgb(String raw, int fallback) {

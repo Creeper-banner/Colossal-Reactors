@@ -80,7 +80,7 @@ public class FuelLoader {
         String output = ColossalReactors.MODID + ":nuclear_waste";
         Identifier nuclearWasteId = Identifier.fromNamespaceAndPath(ColossalReactors.MODID, "nuclear_waste");
         DEFINITIONS.put(uraniumId, new FuelDefinition(uraniumId, nuclearWasteId, FuelDefinition.SUBTYPE_ITEM_ITEM,
-                inputs, 1, output, 1, unitsPerFuel, unitsPerWaste, baseRf, baseFuelUnitsPerTick, true));
+                inputs, 1, output, 1, unitsPerFuel, unitsPerWaste, baseRf, baseFuelUnitsPerTick, true, 0x45c159));
 
         Identifier azuriteId = Identifier.fromNamespaceAndPath(ColossalReactors.MODID, "azurite");
         DEFINITIONS.put(azuriteId, new FuelDefinition(
@@ -95,7 +95,8 @@ public class FuelLoader {
                 1500,
                 1000.0,
                 baseFuelUnitsPerTick,
-                true
+                true,
+                0x53c6a5
         ));
     }
 

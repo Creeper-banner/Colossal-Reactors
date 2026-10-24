@@ -4,7 +4,13 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -374,9 +380,30 @@ public class ReactorRodBlockEntity extends BlockEntity {
         BlockState state = getBlockState();
         if (!(state.getBlock() instanceof ReactorRodBlock)) return;
         int fillLevel = fillPercentToLevel(getFillLevel());
+        BlockState newState = state;
         if (state.getValue(ReactorRodBlock.FILL) != fillLevel) {
-            level.setBlock(worldPosition, state.setValue(ReactorRodBlock.FILL, fillLevel), Block.UPDATE_CLIENTS);
+            newState = state.setValue(ReactorRodBlock.FILL, fillLevel);
+            level.setBlock(worldPosition, newState, Block.UPDATE_CLIENTS);
         }
+        if (!level.isClientSide()) {
+            // Always sync BE so client fuel (rod tint) updates even when FILL is unchanged.
+            level.sendBlockUpdated(worldPosition, state, newState, Block.UPDATE_CLIENTS);
+        }
+    }
+
+    @Override
+    public Packet<ClientGamePacketListener> getUpdatePacket() {
+        return ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    @Override
+    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+        return saveWithoutMetadata(registries);
+    }
+
+    @Override
+    public void onDataPacket(Connection connection, ValueInput valueInput) {
+        loadWithComponents(valueInput);
     }
 
     private static final String TAG_FUEL_UNITS_LEGACY = "fuelUnits";

@@ -59,7 +59,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Reactor Builder GUI. Background reactor_builder.png 230x270; simulation uses reactor_controller.png 230x240.
+ * Reactor Builder GUI. Background reactor_builder.png 230x250; simulation uses reactor_controller.png 230x240.
  * Like Deep Drawer Extractor: Simulation is a view mode (isSimulationView) on the same screen, not a separate Screen.
  */
 public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilderMenu> {
@@ -68,7 +68,7 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
             ColossalReactors.MODID, "textures/gui/reactor_builder.png");
     private static final int GUI_WIDTH = ReactorControllerGui.WIDTH;
     /** Builder inventory GUI ({@code reactor_builder.png}). */
-    private static final int BUILDER_GUI_HEIGHT = 270;
+    private static final int BUILDER_GUI_HEIGHT = 250;
     /** Reactor panel in simulation view ({@code reactor_controller.png}). */
     private static final int REACTOR_GUI_HEIGHT = ReactorControllerGui.HEIGHT;
     private static final String WEBSITE_URL =
@@ -106,8 +106,8 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
      */
     private static final int BUTTON_W = 14;
     private static final int BUTTON_H = 12;
-    private static final int ROW1_Y = 32;
-    private static final int ROW2_Y = 46;
+    private static final int ROW1_Y = 28;
+    private static final int ROW2_Y = 42;
     private static final int GAP = 3;
     private static final int INVENTORY_LEFT_X = 35;
     private static final int ARROW_GROUP_WIDTH = 3 * BUTTON_W + 2 * GAP;  // 48
@@ -129,7 +129,7 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
     /**
      * 6 buttons: 3 cols x 2 rows
      * (Pattern, PatternMode, HeatSink, OpenTop, Simulation, Build/Stop).
-     * HeatSink is last of row 0; on Website it is hidden (Open Link occupies that slot) and stays blank/inactive.
+     * On Website: PatternMode is replaced by Open Link; HeatSink stays visible blank/inactive.
      * Build % above Build row; invalid-blocks warning on arrow row. Second right row aligns with {@link #MARK_INPUT_BUTTON_Y}.
      */
     private static final int RIGHT_EDGE_INSET = 12;
@@ -149,7 +149,7 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
     private static final int PREVIEW_BUTTON_Y = CENTER_BUTTON_Y;
     private static final int PREVIEW_BUTTON_W = RIGHT_BUTTON_W;
     private static final int PREVIEW_BUTTON_X = RIGHT_COL0_X;
-    private static final int OPEN_LINK_BUTTON_X = RIGHT_COL2_X;
+    private static final int OPEN_LINK_BUTTON_X = RIGHT_COL1_X;
     private static final int OPEN_LINK_BUTTON_Y = RIGHT_ROW0_Y;
     /** Seed EditBox starts immediately after ←/−/→ (row 2); spans to the right edge inset. */
     private static final int DESIGN_EDIT_X = BUTTON_RIGHT_X + BUTTON_W + GAP;
@@ -236,7 +236,7 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
     private final GuiPanelScrollbar simulationScrollbar = new GuiPanelScrollbar();
 
     public ReactorBuilderScreen(ReactorBuilderMenu menu, Inventory playerInventory, Component title) {
-        // Builder texture 230x270; simulation still blits the 240-tall controller background at the top.
+        // Builder texture 230x250; simulation still blits the 240-tall controller background at the top.
         super(menu, playerInventory, title, GUI_WIDTH, BUILDER_GUI_HEIGHT);
     }
 
@@ -554,7 +554,7 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
 
     private void switchToWebsiteLinkView() {
         viewMode = ViewMode.WEBSITE_LINK;
-        menu.setHideAllSlotsForSimulationView(false);
+        menu.setHideAllSlotsForSimulationView(true);
         updateWidgetVisibility();
     }
 
@@ -625,10 +625,10 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
         for (int i = 0; i < rightBlockButtons.length; i++) {
             Button b = rightBlockButtons[i];
             if (b == null) continue;
-            // Hide HeatSink (i=2, last of row 0) when website — Open Link occupies that slot.
+            // Hide PatternMode (i=1) when website — Open Link occupies that column; HeatSink (i=2) stays blank/inactive.
             if (showLink) {
                 b.visible = false;
-            } else if (website && i == 2) {
+            } else if (website && i == 1) {
                 b.visible = false;
             } else {
                 b.visible = showBuilder;
@@ -678,9 +678,12 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
         if (menu.getBlockEntity() == null) return;
         BlockPos pos = menu.getBlockPos();
         if (index == 0) ClientPacketDistributor.sendToServer(new ReactorBuilderOptionPayload(pos, 1, true));  // Pattern next
-        if (index == 1) ClientPacketDistributor.sendToServer(new ReactorBuilderOptionPayload(pos, 2, true));  // PatternMode
+        if (index == 1) {
+            if (isWebsitePattern()) return;  // replaced by Open Link
+            ClientPacketDistributor.sendToServer(new ReactorBuilderOptionPayload(pos, 2, true));  // PatternMode
+        }
         if (index == 2) {
-            if (isWebsitePattern()) return;  // inactive / replaced by Open Link
+            if (isWebsitePattern()) return;  // blank / inactive on Website
             ClientPacketDistributor.sendToServer(new ReactorBuilderHeatSinkPayload(pos, true));
             return;
         }
@@ -727,15 +730,17 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
                         .append(Component.literal("\n"))
                         .append(Component.translatable("gui.colossal_reactors.reactor_builder.tooltip.heat_sink_right"))));
         rightBlockButtons[0].setMessage(getRightButtonLabel(0));
-        // Button 1: Pattern mode
-        rightBlockButtons[1].setTooltip(Tooltip.create(
-                Component.translatable("gui.colossal_reactors.reactor_builder.tooltip.pattern_mode." + menu.getPatternMode())
-                        .append(Component.literal("\n"))
-                        .append(Component.translatable("gui.colossal_reactors.reactor_builder.tooltip.heat_sink_left"))
-                        .append(Component.literal("\n"))
-                        .append(Component.translatable("gui.colossal_reactors.reactor_builder.tooltip.heat_sink_right"))));
-        rightBlockButtons[1].setMessage(getRightButtonLabel(1));
-        // Button 2: Heat sink (last of row 0; blank on Website / replaced by Open Link)
+        // Button 1: Pattern mode (hidden on Website — Open Link uses that column)
+        if (!isWebsitePattern()) {
+            rightBlockButtons[1].setTooltip(Tooltip.create(
+                    Component.translatable("gui.colossal_reactors.reactor_builder.tooltip.pattern_mode." + menu.getPatternMode())
+                            .append(Component.literal("\n"))
+                            .append(Component.translatable("gui.colossal_reactors.reactor_builder.tooltip.heat_sink_left"))
+                            .append(Component.literal("\n"))
+                            .append(Component.translatable("gui.colossal_reactors.reactor_builder.tooltip.heat_sink_right"))));
+            rightBlockButtons[1].setMessage(getRightButtonLabel(1));
+        }
+        // Button 2: Heat sink (last of row 0; blank + inactive on Website)
         if (isWebsitePattern()) {
             rightBlockButtons[2].setMessage(Component.empty());
             rightBlockButtons[2].setTooltip(null);
@@ -848,7 +853,7 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
                     ClientPacketDistributor.sendToServer(new ReactorBuilderOptionPayload(menu.getBlockPos(), 1, false));  // Pattern previous
                 return true;
             }
-            if (isInRightBlockButton(x, y, 1)) {
+            if (isInRightBlockButton(x, y, 1) && !isWebsitePattern()) {
                 playGuiClickSound();
                 if (menu.getBlockEntity() != null)
                     ClientPacketDistributor.sendToServer(new ReactorBuilderOptionPayload(menu.getBlockPos(), 2, false));  // PatternMode
@@ -1136,6 +1141,10 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
                     Component.translatable("gui.colossal_reactors.reactor_builder.warning.invalid_blocks"),
                     WARNING_RIGHT_X, buildInvalidBlocksTextY(font.lineHeight), GuiTextColors.ERROR, false);
         }
+        if (viewMode == ViewMode.BUILDER && !websiteStatusMessage.getString().isEmpty()) {
+            guiGraphics.text(font, websiteStatusMessage,
+                    GROUP_LEFT_X, MARK_INPUT_BUTTON_Y + BUTTON_H + 2, GuiTextColors.ERROR, false);
+        }
     }
 
     @Override
@@ -1143,10 +1152,6 @@ public class ReactorBuilderScreen extends AbstractContainerScreen<ReactorBuilder
         super.extractContents(guiGraphics, mouseX, mouseY, partialTick);
         if (viewMode == ViewMode.BUILDER) {
             renderMarkInputGhosts(guiGraphics);
-            if (!websiteStatusMessage.getString().isEmpty()) {
-                guiGraphics.text(font, websiteStatusMessage, GROUP_LEFT_X, MARK_INPUT_BUTTON_Y + BUTTON_H + 2,
-                        GuiTextColors.ERROR, false);
-            }
         }
     }
 

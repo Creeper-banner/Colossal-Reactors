@@ -18,8 +18,12 @@ import java.util.List;
 
 /**
  * Dynamic tint for reactor rod inside fill based on contained fuel color (or client fallback).
+ * Item form uses datapack uranium green via {@code assets/.../items/reactor_rod.json} constant tint ({@code #45c159}).
  */
 public final class ReactorRodColors {
+
+    /** Datapack uranium fuel color ({@code reactor_fuel.json} {@code #45c159}). */
+    public static final int URANIUM_INSIDE_RGB = 0x45C159;
 
     private ReactorRodColors() {}
 

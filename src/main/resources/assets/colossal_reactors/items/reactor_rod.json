@@ -1,6 +1,12 @@
 {
   "model": {
     "type": "minecraft:model",
-    "model": "colossal_reactors:item/reactor_rod"
+    "model": "colossal_reactors:item/reactor_rod",
+    "tints": [
+      {
+        "type": "minecraft:constant",
+        "value": 4571481
+      }
+    ]
   }
 }

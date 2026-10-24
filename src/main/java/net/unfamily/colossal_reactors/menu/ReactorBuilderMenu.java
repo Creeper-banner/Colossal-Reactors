@@ -19,7 +19,7 @@ import net.unfamily.colossal_reactors.blockentity.ReactorBuilderBlockEntity;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Menu for Reactor Builder GUI. Texture 230x270; buffer/player slots +20 vs 250-tall layout (warning gap).
+ * Menu for Reactor Builder GUI. Texture 230x250.
  */
 public class ReactorBuilderMenu extends AbstractContainerMenu {
 
@@ -29,12 +29,12 @@ public class ReactorBuilderMenu extends AbstractContainerMenu {
 
     /** Buffer slot positions (top-left of 9x3 grid). */
     private static final int BUFFER_X = 35;
-    private static final int BUFFER_Y = 122;
+    private static final int BUFFER_Y = 102;
 
     /** Player inventory (3x9) and hotbar (1x9). */
     private static final int PLAYER_X = 35;
-    private static final int PLAYER_Y = 188;
-    private static final int HOTBAR_Y = 246;
+    private static final int PLAYER_Y = 168;
+    private static final int HOTBAR_Y = 226;
 
     private final ContainerLevelAccess levelAccess;
     private final ContainerData fluidData;

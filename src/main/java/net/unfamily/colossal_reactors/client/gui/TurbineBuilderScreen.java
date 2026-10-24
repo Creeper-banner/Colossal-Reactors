@@ -60,7 +60,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Turbine Builder GUI. Background turbine_builder.png 230x270; simulation uses turbine_controller.png 230x240.
+ * Turbine Builder GUI. Background turbine_builder.png 230x250; simulation uses turbine_controller.png 230x240.
  * Like Deep Drawer Extractor: Simulation is a view mode (isSimulationView) on the same screen, not a separate Screen.
  */
 public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilderMenu> {
@@ -68,7 +68,7 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
     private static final Identifier BACKGROUND = Identifier.fromNamespaceAndPath(
             ColossalReactors.MODID, "textures/gui/turbine_builder.png");
     private static final int GUI_WIDTH = ReactorControllerGui.WIDTH;
-    private static final int BUILDER_GUI_HEIGHT = 270;
+    private static final int BUILDER_GUI_HEIGHT = 250;
     private static final int REACTOR_GUI_HEIGHT = ReactorControllerGui.HEIGHT;
     private static final String WEBSITE_URL =
             "https://moddecoded.com/tools/colossal-reactors/turbine-calculator/";
@@ -105,8 +105,8 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
      */
     private static final int BUTTON_W = 14;
     private static final int BUTTON_H = 12;
-    private static final int ROW1_Y = 32;
-    private static final int ROW2_Y = 46;
+    private static final int ROW1_Y = 28;
+    private static final int ROW2_Y = 42;
     private static final int GAP = 3;
     private static final int INVENTORY_LEFT_X = 35;
     private static final int ARROW_GROUP_WIDTH = 3 * BUTTON_W + 2 * GAP;  // 48
@@ -232,7 +232,7 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
     private final GuiPanelScrollbar simulationScrollbar = new GuiPanelScrollbar();
 
     public TurbineBuilderScreen(TurbineBuilderMenu menu, Inventory playerInventory, Component title) {
-        // Builder texture 230x270; simulation still blits the 240-tall controller background at the top.
+        // Builder texture 230x250; simulation still blits the 240-tall controller background at the top.
         super(menu, playerInventory, title, GUI_WIDTH, BUILDER_GUI_HEIGHT);
     }
 
@@ -508,7 +508,7 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
 
     private void switchToWebsiteLinkView() {
         viewMode = ViewMode.WEBSITE_LINK;
-        menu.setHideAllSlotsForSimulationView(false);
+        menu.setHideAllSlotsForSimulationView(true);
         updateWidgetVisibility();
     }
 
@@ -1121,6 +1121,10 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
             guiGraphics.text(font, Component.translatable("gui.colossal_reactors.turbine_builder.warning.invalid_blocks"),
                     WARNING_RIGHT_X, buildInvalidBlocksTextY(font.lineHeight), GuiTextColors.ERROR, false);
         }
+        if (viewMode == ViewMode.BUILDER && !websiteStatusMessage.getString().isEmpty()) {
+            guiGraphics.text(font, websiteStatusMessage,
+                    GROUP_LEFT_X, MARK_INPUT_BUTTON_Y + BUTTON_H + 2, GuiTextColors.ERROR, false);
+        }
     }
 
     /** Ghost item + dark overlay in empty buffer slots with a mark-input filter (same as Reactor Builder). */
@@ -1176,10 +1180,6 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
         super.extractContents(guiGraphics, mouseX, mouseY, partialTick);
         if (viewMode == ViewMode.BUILDER) {
             renderMarkInputGhosts(guiGraphics);
-            if (!websiteStatusMessage.getString().isEmpty()) {
-                guiGraphics.text(font, websiteStatusMessage, GROUP_LEFT_X, MARK_INPUT_BUTTON_Y + BUTTON_H + 2,
-                        GuiTextColors.ERROR, false);
-            }
         }
     }
 

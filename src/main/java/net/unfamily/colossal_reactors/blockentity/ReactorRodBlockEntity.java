@@ -22,6 +22,9 @@ import net.minecraft.world.level.material.Fluids;
 import net.unfamily.colossal_reactors.ColossalReactors;
 import net.unfamily.colossal_reactors.Config;
 import net.unfamily.colossal_reactors.block.ReactorRodBlock;
+import net.unfamily.colossal_reactors.fuel.FuelDefinition;
+import net.unfamily.colossal_reactors.fuel.FuelLoader;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +54,10 @@ public class ReactorRodBlockEntity extends BlockEntity {
     private static final String TAG_COUNT = "Count";
     private static final String TAG_LIQUID_WASTE = "LiquidWaste";
     private static final String TAG_WASTE_ACCUMULATOR = "WasteAccumulator";
+    /** Synced RGB for rod-inside tint (0xRRGGBB). Client render reads this only. */
+    private static final String TAG_INSIDE_TINT = "InsideTint";
+    /** Datapack uranium default ({@code #45c159}). */
+    public static final int DEFAULT_INSIDE_TINT_RGB = 0x45C159;
 
     private static final int COOLANT_CAPACITY_MB = 10_000;
     private static final int SOLID_WASTE_CAPACITY = 1000;
@@ -66,6 +73,45 @@ public class ReactorRodBlockEntity extends BlockEntity {
     private final List<FluidEntry> liquidWasteEntries = new ArrayList<>();
     /** Accumulated consumed units per waste type (float, for fractional waste: 1000 units -> 1 item). */
     private final java.util.Map<Identifier, Float> wasteAccumulator = new java.util.HashMap<>();
+    /** Cached dominant-fuel inside tint; synced to client via {@link #getUpdateTag}. */
+    private int insideTintRgb = DEFAULT_INSIDE_TINT_RGB;
+
+    /** RGB used by client block color for the rod inside fill. */
+    public int getInsideTintRgb() {
+        return insideTintRgb & 0xFFFFFF;
+    }
+
+    /**
+     * Resolves inside fill RGB for a fuel id from datapack {@code color}, else uranium default.
+     */
+    public static int resolveInsideTintRgb(@Nullable Identifier fuelId) {
+        if (fuelId == null) {
+            return DEFAULT_INSIDE_TINT_RGB;
+        }
+        FuelDefinition def = FuelLoader.get(fuelId);
+        if (def != null && def.colorRgb() != null) {
+            return def.colorRgb() & 0xFFFFFF;
+        }
+        return DEFAULT_INSIDE_TINT_RGB;
+    }
+
+    /**
+     * Server: apply controller-authoritative inside tint and sync if changed.
+     * Multiblock fuel lives on the controller; rods do not hold fuel entries.
+     */
+    public void applyControllerInsideTint(int rgb) {
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        int next = rgb & 0xFFFFFF;
+        if (insideTintRgb == next) {
+            return;
+        }
+        insideTintRgb = next;
+        setChanged();
+        BlockState state = getBlockState();
+        level.sendBlockUpdated(worldPosition, state, state, Block.UPDATE_CLIENTS);
+    }
 
     private static final Codec<FuelEntry> FUEL_ENTRY_CODEC = RecordCodecBuilder.create(i -> i.group(
             Identifier.CODEC.fieldOf(TAG_FUEL_ID).forGetter(FuelEntry::id),
@@ -376,19 +422,36 @@ public class ReactorRodBlockEntity extends BlockEntity {
     }
 
     private void updateBlockState() {
-        if (level == null) return;
+        // FILL + tint sync are server-authored; never setBlock from client load/packets.
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        refreshInsideTint();
         BlockState state = getBlockState();
         if (!(state.getBlock() instanceof ReactorRodBlock)) return;
         int fillLevel = fillPercentToLevel(getFillLevel());
         BlockState newState = state;
+        // Push InsideTint to clients before FILL remesh so the color handler can read it.
+        level.sendBlockUpdated(worldPosition, state, state, Block.UPDATE_CLIENTS);
         if (state.getValue(ReactorRodBlock.FILL) != fillLevel) {
             newState = state.setValue(ReactorRodBlock.FILL, fillLevel);
             level.setBlock(worldPosition, newState, Block.UPDATE_CLIENTS);
-        }
-        if (!level.isClientSide()) {
-            // Always sync BE so client fuel (rod tint) updates even when FILL is unchanged.
+        } else {
+            // Tint-only change: still notify so client remeshes after applying the packet.
             level.sendBlockUpdated(worldPosition, state, newState, Block.UPDATE_CLIENTS);
         }
+    }
+
+    private void refreshInsideTint() {
+        Identifier best = null;
+        float bestUnits = 0f;
+        for (FuelEntry e : fuelEntries) {
+            if (e.units() > bestUnits) {
+                bestUnits = e.units();
+                best = e.id();
+            }
+        }
+        insideTintRgb = resolveInsideTintRgb(best);
     }
 
     @Override
@@ -396,14 +459,34 @@ public class ReactorRodBlockEntity extends BlockEntity {
         return ClientboundBlockEntityDataPacket.create(this);
     }
 
+    /** Client sync: only the inside tint RGB (not fuel/coolant/waste inventories). */
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        return saveWithoutMetadata(registries);
+        CompoundTag tag = new CompoundTag();
+        tag.putInt(TAG_INSIDE_TINT, insideTintRgb & 0xFFFFFF);
+        return tag;
     }
 
     @Override
     public void onDataPacket(Connection connection, ValueInput valueInput) {
-        loadWithComponents(valueInput);
+        applyInsideTintFromNetwork(valueInput);
+    }
+
+    @Override
+    public void handleUpdateTag(ValueInput input) {
+        // Chunk sync uses getUpdateTag (InsideTint only) — do not run full loadAdditional.
+        applyInsideTintFromNetwork(input);
+    }
+
+    private void applyInsideTintFromNetwork(ValueInput input) {
+        input.getInt(TAG_INSIDE_TINT).ifPresent(v -> {
+            insideTintRgb = v & 0xFFFFFF;
+            // FILL remesh can race ahead of this packet; force a client rebuild with the synced tint.
+            if (level != null && level.isClientSide()) {
+                BlockState state = getBlockState();
+                level.sendBlockUpdated(worldPosition, state, state, Block.UPDATE_ALL);
+            }
+        });
     }
 
     private static final String TAG_FUEL_UNITS_LEGACY = "fuelUnits";
@@ -432,6 +515,7 @@ public class ReactorRodBlockEntity extends BlockEntity {
                 output.store(TAG_WASTE_ACCUMULATOR, WASTE_ACC_CODEC, positive);
             }
         }
+        output.putInt(TAG_INSIDE_TINT, insideTintRgb & 0xFFFFFF);
     }
 
     @Override
@@ -466,6 +550,14 @@ public class ReactorRodBlockEntity extends BlockEntity {
         }
         wasteAccumulator.clear();
         input.read(TAG_WASTE_ACCUMULATOR, WASTE_ACC_CODEC).ifPresent(wasteAccumulator::putAll);
-        updateBlockState();
+        if (input.getInt(TAG_INSIDE_TINT).isPresent()) {
+            insideTintRgb = input.getIntOr(TAG_INSIDE_TINT, DEFAULT_INSIDE_TINT_RGB) & 0xFFFFFF;
+        } else {
+            refreshInsideTint();
+        }
+        // Do not call updateBlockState() on client — chunk/packet load must not setBlock.
+        if (level != null && !level.isClientSide()) {
+            updateBlockState();
+        }
     }
 }

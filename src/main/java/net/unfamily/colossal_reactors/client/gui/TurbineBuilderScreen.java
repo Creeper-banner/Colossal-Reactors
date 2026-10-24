@@ -283,12 +283,16 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
         buttonRight = Button.builder(Component.literal("\u2192"), b -> sendSize(2, true))  // → changes second value (R = sizeLeft)
                 .bounds(leftPos + BUTTON_RIGHT_X, topPos + ROW2_Y, BUTTON_W, BUTTON_H)
                 .build();
+        buttonWebsitePlacement = Button.builder(getPlacementAxisShortLabel(), b -> cyclePlacementAxis(true))
+                .bounds(leftPos + GROUP_LEFT_X, topPos + ROW2_Y, ARROW_GROUP_WIDTH, BUTTON_H)
+                .build();
         addRenderableWidget(buttonUp);
         addRenderableWidget(buttonOffsetLeft);
         addRenderableWidget(buttonOffsetRight);
         addRenderableWidget(buttonLeft);
         addRenderableWidget(buttonDown);
         addRenderableWidget(buttonRight);
+        addRenderableWidget(buttonWebsitePlacement);
 
         buttonCenter = Button.builder(Component.translatable("gui.colossal_reactors.builder.center"), b -> sendSize(6, true))
                 .bounds(leftPos + CENTER_BUTTON_X, topPos + CENTER_BUTTON_Y, CENTER_BUTTON_W, BUTTON_H)
@@ -583,18 +587,22 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
         if (buttonOffsetLeft != null) buttonOffsetLeft.visible = showBuilder;
         if (buttonOffsetRight != null) buttonOffsetRight.visible = showBuilder;
         if (buttonCenter != null) buttonCenter.visible = showBuilder;
-        // Keep ←/−/→ visible in Website mode but inactive (size comes from the seed).
+        // Classic: ←/−/→ resize. Website: those slots become Placement (D-U…); size comes from the seed.
         if (buttonLeft != null) {
-            buttonLeft.visible = showBuilder;
+            buttonLeft.visible = showBuilder && !website;
             buttonLeft.active = showBuilder && !website;
         }
         if (buttonRight != null) {
-            buttonRight.visible = showBuilder;
+            buttonRight.visible = showBuilder && !website;
             buttonRight.active = showBuilder && !website;
         }
         if (buttonDown != null) {
-            buttonDown.visible = showBuilder;
+            buttonDown.visible = showBuilder && !website;
             buttonDown.active = showBuilder && !website;
+        }
+        if (buttonWebsitePlacement != null) {
+            buttonWebsitePlacement.visible = website;
+            buttonWebsitePlacement.active = website;
         }
         if (buttonPreview != null) buttonPreview.visible = showBuilder;
         if (buttonMarkInput != null) buttonMarkInput.visible = showBuilder;
@@ -720,6 +728,11 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
         ClientPacketDistributor.sendToServer(new TurbineBuilderOptionPayload(menu.getBlockPos(), 2, next));
     }
 
+    private void cyclePlacementAxis(boolean next) {
+        if (menu.getBlockEntity() == null) return;
+        ClientPacketDistributor.sendToServer(new TurbineBuilderOptionPayload(menu.getBlockPos(), 3, next));
+    }
+
     private void onRightBlockClick(int index) {
         if (index == 4) {
             switchToSimulationView();
@@ -728,7 +741,7 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
         if (menu.getBlockEntity() == null) return;
         BlockPos pos = menu.getBlockPos();
         if (index == 0) ClientPacketDistributor.sendToServer(new TurbineBuilderOptionPayload(pos, 1, true));  // Pattern
-        if (index == 1) ClientPacketDistributor.sendToServer(new TurbineBuilderOptionPayload(pos, 3, true));  // Placement
+        if (index == 1) cyclePlacementAxis(true);
         if (index == 2) ClientPacketDistributor.sendToServer(new TurbineBuilderCoilPayload(pos, true));  // Coil
         if (index == 3) ClientPacketDistributor.sendToServer(new TurbineBuilderOptionPayload(pos, 0, true));  // OpenTop
         if (index == 5) {
@@ -753,9 +766,13 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
                         .append(Component.literal("\n"))
                         .append(Component.translatable("gui.colossal_reactors.turbine_builder.tooltip.coil_right"))));
         rightBlockButtons[0].setMessage(getRightButtonLabel(0));
-        // Button 1: Placement axis
+        // Button 1: Placement axis (classic right block; Website uses buttonWebsitePlacement)
         rightBlockButtons[1].setTooltip(Tooltip.create(getPlacementAxisTooltip()));
         rightBlockButtons[1].setMessage(getRightButtonLabel(1));
+        if (buttonWebsitePlacement != null) {
+            buttonWebsitePlacement.setMessage(getPlacementAxisShortLabel());
+            buttonWebsitePlacement.setTooltip(Tooltip.create(getPlacementAxisTooltip()));
+        }
         // Button 2: Coil (last of row 0; editable on Website)
         Component coilName = getCoilButtonLabel();
         rightBlockButtons[2].setMessage(coilName);
@@ -908,9 +925,13 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
                     ClientPacketDistributor.sendToServer(new TurbineBuilderOptionPayload(menu.getBlockPos(), 1, false));  // Pattern
                 return true;
             }
+            if (buttonWebsitePlacement != null && buttonWebsitePlacement.visible
+                    && isInWidget(x, y, buttonWebsitePlacement)) {
+                cyclePlacementAxis(false);
+                return true;
+            }
             if (isInRightBlockButton(x, y, 1)) {
-                if (menu.getBlockEntity() != null)
-                    ClientPacketDistributor.sendToServer(new TurbineBuilderOptionPayload(menu.getBlockPos(), 3, false));  // Placement
+                cyclePlacementAxis(false);
                 return true;
             }
             if (isInRightBlockButton(x, y, 2)) {
@@ -920,7 +941,7 @@ public class TurbineBuilderScreen extends AbstractContainerScreen<TurbineBuilder
             }
             if (isInRightBlockButton(x, y, 3)) {
                 if (menu.getBlockEntity() != null)
-                    ClientPacketDistributor.sendToServer(new TurbineBuilderOptionPayload(menu.getBlockPos(), 0, false));  // OpenTop
+                    ClientPacketDistributor.sendToServer(new TurbineBuilderOptionPayload(menu.getBlockPos(), 0, true));  // OpenTop toggle
                 return true;
             }
         }

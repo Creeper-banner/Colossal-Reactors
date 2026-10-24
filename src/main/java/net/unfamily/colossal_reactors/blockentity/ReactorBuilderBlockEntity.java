@@ -43,6 +43,9 @@ import net.unfamily.colossal_reactors.fuel.FuelLoader;
 import net.unfamily.colossal_reactors.heatsink.HeatSinkLoader;
 import net.unfamily.colossal_reactors.menu.ReactorBuilderMenu;
 import net.unfamily.colossal_reactors.reactor.ReactorBuildLogic;
+import net.unfamily.colossal_reactors.reactor.RodPatternLogic;
+import net.unfamily.colossal_reactors.builder.web.ModDecodedReactorDesign;
+import java.util.Optional;
 import net.unfamily.iskalib.transfer.LegacyItemHandlerResourceHandler;
 import org.jetbrains.annotations.Nullable;
 
@@ -89,6 +92,7 @@ public class ReactorBuilderBlockEntity extends BlockEntity implements MenuProvid
     private static final String TAG_BUILD_PROGRESS = "BuildProgress";
     private static final String TAG_BUILD_PROGRESS_VISIBLE = "BuildProgressVisible";
     private static final String TAG_MARK_INPUT_FILTERS = "MarkInputFilters";
+    private static final String TAG_WEBSITE_DESIGN = "WebsiteDesign";
     private static final int BUFFER_SLOTS = 9 * 3;
 
     /**
@@ -210,6 +214,13 @@ public class ReactorBuilderBlockEntity extends BlockEntity implements MenuProvid
     /** Last computed build progress (0-100). Kept visible after build completes/aborts until user stops or restarts. */
     private int buildProgressPercent = 0;
     private boolean buildProgressVisible = false;
+    /** Raw ModDecoded {@code mdcr1} seed (or pasted URL fragment); parsed on use. */
+    private String websiteDesignCode = "";
+    /** Cached decoded cells from {@link #websiteDesignCode}; null when invalid/cleared. */
+    @Nullable
+    private transient String[] websiteCellsCache;
+    private transient int websiteCacheW = -1;
+    private transient int websiteCacheD = -1;
 
     // Build progress cursors (NEXT position to process). These make building "forward-only" and avoid rescanning from start.
     private int buildStage = 0;
@@ -219,7 +230,7 @@ public class ReactorBuilderBlockEntity extends BlockEntity implements MenuProvid
     private int buildLiquidLx = Integer.MIN_VALUE, buildLiquidLy = Integer.MIN_VALUE, buildLiquidLz = Integer.MIN_VALUE;
     private int buildHeatLx = Integer.MIN_VALUE, buildHeatLy = Integer.MIN_VALUE, buildHeatLz = Integer.MIN_VALUE;
 
-    private static final int ROD_PATTERN_COUNT = 5;
+    private static final int ROD_PATTERN_COUNT = RodPatternLogic.PATTERN_COUNT;
     private static final int PATTERN_MODE_COUNT = 4;
 
     public void resetBuildProgress() {
@@ -291,13 +302,18 @@ public class ReactorBuilderBlockEntity extends BlockEntity implements MenuProvid
                 case 0 -> {
                     sizeLeft = Math.max(0, Math.min(getMaxWidth() - sizeRight, value));
                     if (sizeLeft + sizeRight < 1) sizeRight = 1 - sizeLeft;
+                    invalidateWebsiteCellCache();
                 }
                 case 1 -> {
                     sizeRight = Math.max(0, Math.min(getMaxWidth() - sizeLeft, value));
                     if (sizeLeft + sizeRight < 1) sizeLeft = 1 - sizeRight;
+                    invalidateWebsiteCellCache();
                 }
                 case 2 -> sizeHeight = Math.max(MIN_SIZE, Math.min(getMaxHeight(), value));
-                case 3 -> sizeDepth = Math.max(MIN_SIZE, Math.min(getMaxDepth(), value));
+                case 3 -> {
+                    sizeDepth = Math.max(MIN_SIZE, Math.min(getMaxDepth(), value));
+                    invalidateWebsiteCellCache();
+                }
                 case 7 -> selectedHeatSinkIndex = Math.max(0, Math.min(HeatSinkLoader.getHeatSinkOptionCount() - 1, value));
                 case 8 -> openTop = value != 0;
                 case 9 -> rodPattern = Math.max(0, Math.min(ROD_PATTERN_COUNT - 1, value));
@@ -418,6 +434,132 @@ public class ReactorBuilderBlockEntity extends BlockEntity implements MenuProvid
     public boolean isInvalidBlocksDetected() { return invalidBlocksDetected; }
     public int getBuildProgressPercent() { return buildProgressPercent; }
     public boolean isBuildProgressVisible() { return buildProgressVisible; }
+
+    public int getExteriorWidth() { return sizeLeft + sizeRight + 1; }
+    public int getExteriorHeight() { return sizeHeight + 1; }
+    public int getExteriorDepth() { return sizeDepth + 1; }
+
+    public void setRodPattern(int pattern) {
+        this.rodPattern = Math.max(0, Math.min(ROD_PATTERN_COUNT - 1, pattern));
+        setChanged();
+    }
+
+    public void setPatternMode(int mode) {
+        this.patternMode = Math.max(0, Math.min(PATTERN_MODE_COUNT - 1, mode));
+        setChanged();
+    }
+
+    public void setSelectedHeatSinkIndex(int index) {
+        this.selectedHeatSinkIndex = Math.max(0, Math.min(HeatSinkLoader.getHeatSinkOptionCount() - 1, index));
+        setChanged();
+    }
+
+    public void setSimCoolantIndex(int index) {
+        this.simCoolantIndex = Math.max(0, Math.min(simCoolantOptionCount() - 1, index));
+        setChanged();
+    }
+
+    public void setSimFuelIndex(int index) {
+        this.simFuelIndex = Math.max(0, index);
+        setChanged();
+    }
+
+    /**
+     * Sets exterior W×D×H (blocks) centered on the builder: {@code sizeLeft=(W-1)/2},
+     * {@code sizeRight=W-1-sizeLeft}, {@code sizeHeight=H-1}, {@code sizeDepth=D-1}.
+     */
+    public void setExteriorSizeCentered(int exteriorW, int exteriorD, int exteriorH) {
+        int w = Math.max(MIN_SIZE + 1, Math.min(getMaxWidth() + 1, exteriorW));
+        int d = Math.max(MIN_SIZE + 1, Math.min(getMaxDepth() + 1, exteriorD));
+        int h = Math.max(MIN_SIZE + 1, Math.min(getMaxHeight() + 1, exteriorH));
+        sizeLeft = (w - 1) / 2;
+        sizeRight = (w - 1) - sizeLeft;
+        sizeDepth = Math.max(MIN_SIZE, d - 1);
+        sizeHeight = Math.max(MIN_SIZE, h - 1);
+        invalidateWebsiteCellCache();
+        setChanged();
+    }
+
+    public String getWebsiteDesign() {
+        return websiteDesignCode != null ? websiteDesignCode : "";
+    }
+
+    /** Stores the raw seed (or pasted URL); refreshes the decoded cell cache when valid. */
+    public void setWebsiteDesign(String code) {
+        String raw = code != null ? code.trim() : "";
+        Optional<ModDecodedReactorDesign> decoded = ModDecodedReactorDesign.decode(raw);
+        if (decoded.isPresent()) {
+            websiteDesignCode = decoded.get().code();
+            refreshWebsiteCellCache(decoded.get());
+        } else {
+            String extracted = ModDecodedReactorDesign.extractCode(raw);
+            websiteDesignCode = extracted != null ? extracted : raw;
+            invalidateWebsiteCellCache();
+        }
+        setChanged();
+    }
+
+    public boolean hasValidWebsiteDesign() {
+        ensureWebsiteCellCache();
+        return websiteCellsCache != null;
+    }
+
+    /**
+     * Website interior cell id at rod-space (rx, rz): {@code "rod"}, a heat-sink id, or null.
+     * Requires a valid design whose exterior matches the current builder size.
+     */
+    @Nullable
+    public String getWebsiteCell(int rx, int rz) {
+        ensureWebsiteCellCache();
+        if (websiteCellsCache == null) {
+            return null;
+        }
+        int iw = getExteriorWidth() - 2;
+        int id = getExteriorDepth() - 2;
+        if (rx < 0 || rz < 0 || rx >= iw || rz >= id) {
+            return null;
+        }
+        int i = rx * id + rz;
+        if (i < 0 || i >= websiteCellsCache.length) {
+            return null;
+        }
+        return websiteCellsCache[i];
+    }
+
+    public boolean websiteIsRodColumn(int rx, int rz) {
+        return "rod".equals(getWebsiteCell(rx, rz));
+    }
+
+    private void ensureWebsiteCellCache() {
+        int w = getExteriorWidth();
+        int d = getExteriorDepth();
+        if (websiteCellsCache != null && websiteCacheW == w && websiteCacheD == d) {
+            return;
+        }
+        Optional<ModDecodedReactorDesign> decoded = ModDecodedReactorDesign.decode(websiteDesignCode);
+        if (decoded.isEmpty()) {
+            invalidateWebsiteCellCache();
+            return;
+        }
+        ModDecodedReactorDesign design = decoded.get();
+        if (design.exteriorX() != w || design.exteriorZ() != d) {
+            invalidateWebsiteCellCache();
+            return;
+        }
+        refreshWebsiteCellCache(design);
+    }
+
+    private void refreshWebsiteCellCache(ModDecodedReactorDesign design) {
+        websiteCellsCache = design.cells().clone();
+        websiteCacheW = design.exteriorX();
+        websiteCacheD = design.exteriorZ();
+    }
+
+    private void invalidateWebsiteCellCache() {
+        websiteCellsCache = null;
+        websiteCacheW = -1;
+        websiteCacheD = -1;
+    }
 
     /** Start building: only if no red zone. Called from server when user presses Build. Sets invalidBlocksDetected when refusing so GUI shows warning. */
     public void startBuild() {
@@ -589,7 +731,10 @@ public class ReactorBuilderBlockEntity extends BlockEntity implements MenuProvid
         return new AABB(minX, minY, minZ, maxX + 1, maxY + 1, maxZ + 1);
     }
 
-    /** Direction: 0=up, 1=left button (adjusts sizeRight), 2=right button (adjusts sizeLeft), 3=behind. amount=1,5,10. */
+    /**
+     * Direction: 0=up, 1=left (sizeRight), 2=right (sizeLeft), 3=behind,
+     * 4=offset toward left («), 5=offset toward right (»), 6=center L/R.
+     */
     public void adjustSize(int direction, boolean increment, int amount) {
         int delta = increment ? amount : -amount;
         switch (direction) {
@@ -605,10 +750,36 @@ public class ReactorBuilderBlockEntity extends BlockEntity implements MenuProvid
                 if (sizeLeft + sizeRight < 1) sizeRight = 1 - sizeLeft;
             }
             case 3 -> sizeDepth = Math.max(MIN_SIZE, Math.min(getMaxDepth(), sizeDepth + delta));
+            case 4 -> offsetWidth(delta);
+            case 5 -> offsetWidth(-delta);
+            case 6 -> centerWidth();
             default -> {}
         }
         if (sizeLeft + sizeRight < 1) { sizeLeft = 1; sizeRight = 0; }
+        invalidateWebsiteCellCache();
         setChanged();
+    }
+
+    /** Shift width balance: +amount adds to sizeLeft and removes from sizeRight (total width unchanged). */
+    public void offsetWidth(int amountTowardLeft) {
+        if (amountTowardLeft == 0) {
+            return;
+        }
+        int total = sizeLeft + sizeRight;
+        int newLeft = Math.max(0, Math.min(total, sizeLeft + amountTowardLeft));
+        sizeLeft = newLeft;
+        sizeRight = total - sizeLeft;
+        if (sizeLeft + sizeRight < 1) {
+            sizeLeft = 1;
+            sizeRight = 0;
+        }
+    }
+
+    /** Balance sizeLeft/sizeRight for the current total width. */
+    public void centerWidth() {
+        int total = sizeLeft + sizeRight;
+        sizeLeft = total / 2;
+        sizeRight = total - sizeLeft;
     }
 
     /** Single step (backward compatible). */
@@ -692,6 +863,9 @@ public class ReactorBuilderBlockEntity extends BlockEntity implements MenuProvid
         output.putInt(TAG_BUILD_HEAT_LZ, buildHeatLz);
         output.putInt(TAG_BUILD_PROGRESS, buildProgressPercent);
         output.putBoolean(TAG_BUILD_PROGRESS_VISIBLE, buildProgressVisible);
+        if (websiteDesignCode != null && !websiteDesignCode.isEmpty()) {
+            output.putString(TAG_WEBSITE_DESIGN, websiteDesignCode);
+        }
         ValueOutput markOut = output.child(TAG_MARK_INPUT_FILTERS);
         for (int i = 0; i < markInputFilters.size(); i++) {
             ItemStack filter = markInputFilters.get(i);
@@ -746,6 +920,14 @@ public class ReactorBuilderBlockEntity extends BlockEntity implements MenuProvid
         openTop = input.getBooleanOr(TAG_OPEN_TOP, openTop);
         input.getInt(TAG_ROD_PATTERN).ifPresent(v -> rodPattern = Math.max(0, Math.min(ROD_PATTERN_COUNT - 1, v)));
         input.getInt(TAG_PATTERN_MODE).ifPresent(v -> patternMode = Math.max(0, Math.min(PATTERN_MODE_COUNT - 1, v)));
+        String websiteRaw = input.getStringOr(TAG_WEBSITE_DESIGN, "");
+        if (websiteRaw != null && !websiteRaw.isEmpty()) {
+            websiteDesignCode = websiteRaw;
+            invalidateWebsiteCellCache();
+        } else {
+            websiteDesignCode = "";
+            invalidateWebsiteCellCache();
+        }
         building = input.getBooleanOr(TAG_BUILDING, building);
         invalidBlocksDetected = input.getBooleanOr(TAG_INVALID_BLOCKS, invalidBlocksDetected);
         buildStage = input.getIntOr(TAG_BUILD_STAGE, buildStage);

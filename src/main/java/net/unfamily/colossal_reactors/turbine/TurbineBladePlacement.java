@@ -14,9 +14,9 @@ import net.unfamily.colossal_reactors.block.ModBlocks;
 import net.unfamily.colossal_reactors.block.TurbineBladeBlock;
 import net.unfamily.colossal_reactors.block.TurbineRodBlock;
 
-import org.jetbrains.annotations.Nullable;
-
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -38,27 +38,72 @@ public final class TurbineBladePlacement {
      * Does not shrink the interior; caps radial extent from this rod column index.
      */
     public static int maxRingForRodColumn(int crossA, int crossB, int crossSizeA, int crossSizeB) {
+        return maxRingForRodColumn(crossA, crossB, crossSizeA, crossSizeB, Collections.emptyList());
+    }
+
+    /**
+     * Shell clearance, further capped so blade rings stop one cell before neighboring rod columns
+     * (Chebyshev distance − 1). Matches ModDecoded multi-rod blade packing.
+     */
+    public static int maxRingForRodColumn(
+            int crossA, int crossB, int crossSizeA, int crossSizeB,
+            Collection<TurbineRodControllerLayout.Center> allColumns) {
         if (crossSizeA <= 0 || crossSizeB <= 0) {
             return 0;
         }
         int clampedA = Math.max(0, Math.min(crossA, crossSizeA - 1));
         int clampedB = Math.max(0, Math.min(crossB, crossSizeB - 1));
-        int clearance = Math.min(
+        int shell = Math.max(0, Math.min(
                 Math.min(clampedA, crossSizeA - 1 - clampedA),
-                Math.min(clampedB, crossSizeB - 1 - clampedB));
-        return Math.max(0, clearance);
+                Math.min(clampedB, crossSizeB - 1 - clampedB)));
+        if (allColumns == null || allColumns.isEmpty()) {
+            return shell;
+        }
+        int toNeighbor = Integer.MAX_VALUE;
+        for (TurbineRodControllerLayout.Center other : allColumns) {
+            if (other.rx() == crossA && other.rz() == crossB) {
+                continue;
+            }
+            int cheb = Math.max(Math.abs(other.rx() - crossA), Math.abs(other.rz() - crossB));
+            toNeighbor = Math.min(toNeighbor, cheb - 1);
+        }
+        if (toNeighbor == Integer.MAX_VALUE) {
+            return shell;
+        }
+        return Math.min(shell, Math.max(0, toNeighbor));
     }
 
     /**
-     * Pattern/config target ring clamped to what fits in {@link TurbineRotorLayout} for the primary rod column.
+     * Pattern/config target ring clamped to what fits for the primary rod column.
      */
     public static int effectiveTargetBladeRing(TurbineRotorLayout layout, int layerIndex, int rodPattern) {
         TurbineRodControllerLayout.Center center = layout.primaryCenter();
+        return effectiveTargetBladeRing(
+                layout, layerIndex, rodPattern, center.rx(), center.rz(),
+                Collections.emptyList(), Integer.MAX_VALUE);
+    }
+
+    /** Pattern/config target ring clamped to clearance around column {@code (crossA, crossB)}. */
+    public static int effectiveTargetBladeRing(
+            TurbineRotorLayout layout, int layerIndex, int rodPattern, int crossA, int crossB) {
+        return effectiveTargetBladeRing(
+                layout, layerIndex, rodPattern, crossA, crossB,
+                Collections.emptyList(), Integer.MAX_VALUE);
+    }
+
+    /**
+     * Pattern/config target ring clamped by shell + neighbor-rod clearance and an optional design ring cap
+     * ({@code mdct1} {@code ring} field; pass {@link Integer#MAX_VALUE} when unused).
+     */
+    public static int effectiveTargetBladeRing(
+            TurbineRotorLayout layout, int layerIndex, int rodPattern, int crossA, int crossB,
+            Collection<TurbineRodControllerLayout.Center> allColumns, int designRingCap) {
         int structural = maxRingForRodColumn(
-                center.rx(), center.rz(), layout.crossSizeA(), layout.crossSizeB());
+                crossA, crossB, layout.crossSizeA(), layout.crossSizeB(), allColumns);
         int patternRing = TurbineRodPatternLogic.targetBladeRingForLayer(
                 layerIndex, layout.rodExtent(), rodPattern);
-        return Math.min(patternRing, Math.min(maxRing(), structural));
+        int ringCap = designRingCap < 0 ? maxRing() : designRingCap;
+        return Math.min(patternRing, Math.min(maxRing(), Math.min(structural, ringCap)));
     }
 
     /** Four directions perpendicular to the rod axis (stable order). */
@@ -85,13 +130,67 @@ public final class TurbineBladePlacement {
         }
     }
 
+    /**
+     * True when {@code state} is a blade that belongs to a rod along {@code outwardFromRod}
+     * (same facing as when placing by clicking the rod: blade points away from the rod).
+     */
+    public static boolean isOwnedBladeAlong(BlockState state, Direction outwardFromRod) {
+        return state.is(ModBlocks.TURBINE_BLADE.get())
+                && state.hasProperty(TurbineBladeBlock.FACING)
+                && state.getValue(TurbineBladeBlock.FACING) == outwardFromRod;
+    }
+
+    /**
+     * Ownership along a lateral arm, including blades shared with an aligned neighboring rod:
+     * facing may be opposite when another turbine rod lies further on the same axis.
+     */
+    public static boolean isOwnedBladeAlong(
+            BlockGetter level, BlockPos rodPos, BlockState state, Direction outwardFromRod) {
+        if (!state.is(ModBlocks.TURBINE_BLADE.get()) || !state.hasProperty(TurbineBladeBlock.FACING)) {
+            return false;
+        }
+        Direction facing = state.getValue(TurbineBladeBlock.FACING);
+        if (facing == outwardFromRod) {
+            return true;
+        }
+        if (facing != outwardFromRod.getOpposite()) {
+            return false;
+        }
+        return hasAlignedRodFurtherAlong(level, rodPos, outwardFromRod);
+    }
+
+    /** Another turbine rod further along {@code outward}, same shaft axis — mid blades can be shared. */
+    private static boolean hasAlignedRodFurtherAlong(BlockGetter level, BlockPos rodPos, Direction outward) {
+        BlockState self = safeGetBlockState(level, rodPos);
+        if (!self.is(ModBlocks.TURBINE_ROD.get()) || !self.hasProperty(TurbineRodBlock.FACING)) {
+            return false;
+        }
+        Direction.Axis shaftAxis = self.getValue(TurbineRodBlock.FACING).getAxis();
+        Block rod = ModBlocks.TURBINE_ROD.get();
+        Block blade = ModBlocks.TURBINE_BLADE.get();
+        BlockPos.MutableBlockPos pos = rodPos.mutable().move(outward);
+        int cap = Math.max(maxRing() + 2, 8);
+        for (int step = 0; step < cap; step++) {
+            BlockState at = safeGetBlockState(level, pos);
+            if (at.is(rod)) {
+                return at.hasProperty(TurbineRodBlock.FACING)
+                        && at.getValue(TurbineRodBlock.FACING).getAxis() == shaftAxis;
+            }
+            if (at.is(blade) || at.isAir()) {
+                pos.move(outward);
+                continue;
+            }
+            return false;
+        }
+        return false;
+    }
+
     /** Blade count on one lateral axis from the rod outward (capped by config). */
     public static int depthAlong(BlockGetter level, BlockPos rodPos, Direction lateralDir) {
-        Block blade = ModBlocks.TURBINE_BLADE.get();
         int depth = 0;
         BlockPos.MutableBlockPos pos = rodPos.mutable().move(lateralDir);
         int cap = maxRing();
-        while (depth < cap && safeGetBlockState(level, pos).is(blade)) {
+        while (depth < cap && isOwnedBladeAlong(level, rodPos, safeGetBlockState(level, pos), lateralDir)) {
             depth++;
             pos.move(lateralDir);
         }
@@ -106,13 +205,13 @@ public final class TurbineBladePlacement {
         return total;
     }
 
-    /** Smallest ring index (1-based) that still has a free lateral slot. */
+    /** Smallest ring index (1-based) that still has a free lateral slot for this rod. */
     public static int currentRing(Level level, BlockPos rodPos, Direction rodAxis) {
         int limit = maxRing();
         List<Direction> lateral = lateralDirections(rodAxis);
         for (int ring = 1; ring <= limit; ring++) {
             for (Direction dir : lateral) {
-                if (!safeGetBlockState(level, rodPos.relative(dir, ring)).is(ModBlocks.TURBINE_BLADE.get())) {
+                if (!isOwnedBladeAlong(level, rodPos, safeGetBlockState(level, rodPos.relative(dir, ring)), dir)) {
                     return ring;
                 }
             }
@@ -134,7 +233,7 @@ public final class TurbineBladePlacement {
         List<Direction> missing = new ArrayList<>();
         int minDepth = Integer.MAX_VALUE;
         for (Direction dir : lateral) {
-            if (!safeGetBlockState(level, rodPos.relative(dir, ring)).is(ModBlocks.TURBINE_BLADE.get())) {
+            if (!isOwnedBladeAlong(level, rodPos, safeGetBlockState(level, rodPos.relative(dir, ring)), dir)) {
                 missing.add(dir);
                 minDepth = Math.min(minDepth, depthAlong(level, rodPos, dir));
             }
@@ -169,15 +268,17 @@ public final class TurbineBladePlacement {
         return Optional.of(candidates.get(total % candidates.size()));
     }
 
-    /** All blade positions linked to this rod (contiguous blades on each lateral axis). */
+    /**
+     * Blade positions owned by this rod: contiguous outward chain on each lateral axis
+     * (same facing as placement, or opposite when shared with an aligned neighboring rod).
+     */
     public static List<BlockPos> collectBladePositions(Level level, BlockPos rodPos, Direction rodAxis) {
         List<BlockPos> blades = new ArrayList<>();
-        Block blade = ModBlocks.TURBINE_BLADE.get();
         int scanCap = Math.max(maxRing(), 64);
         for (Direction dir : lateralDirections(rodAxis)) {
             BlockPos.MutableBlockPos pos = rodPos.mutable().move(dir);
             int distance = 0;
-            while (distance < scanCap && safeGetBlockState(level, pos).is(blade)) {
+            while (distance < scanCap && isOwnedBladeAlong(level, rodPos, safeGetBlockState(level, pos), dir)) {
                 blades.add(pos.immutable());
                 pos.move(dir);
                 distance++;
@@ -210,39 +311,57 @@ public final class TurbineBladePlacement {
 
     /**
      * Places the next blade on the current ring (balanced lateral pick). Returns true if placed.
+     * Tries alternate lateral directions on the same ring when the preferred cell is blocked
+     * (common with multi-rod layouts).
      */
     public static boolean placeNextBlade(Level level, BlockPos rodPos, BlockState rodState) {
         if (!(rodState.getBlock() instanceof TurbineRodBlock) || !rodState.hasProperty(TurbineRodBlock.FACING)) {
             return false;
         }
         Direction rodAxis = rodState.getValue(TurbineRodBlock.FACING);
-        Optional<Direction> lateral = chooseLateralDirection(level, rodPos, rodAxis);
-        if (lateral.isEmpty()) {
-            return false;
-        }
         int ring = currentRing(level, rodPos, rodAxis);
         if (ring > maxRing()) {
             return false;
         }
-        BlockPos placePos = rodPos.relative(lateral.get(), ring);
-        if (!level.getBlockState(placePos).canBeReplaced()) {
-            return false;
+        List<Direction> tryOrder = new ArrayList<>();
+        chooseLateralDirection(level, rodPos, rodAxis).ifPresent(tryOrder::add);
+        for (Direction dir : lateralDirections(rodAxis)) {
+            if (tryOrder.contains(dir)) {
+                continue;
+            }
+            if (isOwnedBladeAlong(level, rodPos, safeGetBlockState(level, rodPos.relative(dir, ring)), dir)) {
+                continue;
+            }
+            if (ring > 1 && depthAlong(level, rodPos, dir) != ring - 1) {
+                continue;
+            }
+            tryOrder.add(dir);
         }
-        BlockState bladeState = ModBlocks.TURBINE_BLADE.get().defaultBlockState()
-                .setValue(TurbineBladeBlock.FACING, lateral.get());
-        boolean placed = level.setBlock(placePos, bladeState, Block.UPDATE_ALL);
-        if (placed) {
-            refreshRodConnectorRender(level, rodPos);
+        for (Direction lateral : tryOrder) {
+            BlockPos placePos = rodPos.relative(lateral, ring);
+            if (!level.getBlockState(placePos).canBeReplaced()) {
+                continue;
+            }
+            BlockState bladeState = ModBlocks.TURBINE_BLADE.get().defaultBlockState()
+                    .setValue(TurbineBladeBlock.FACING, lateral);
+            if (level.setBlock(placePos, bladeState, Block.UPDATE_ALL)) {
+                refreshRodConnectorRender(level, rodPos);
+                return true;
+            }
         }
-        return placed;
+        return false;
     }
 
-    /** Walks from a blade toward its rod along the blade {@link TurbineBladeBlock#FACING} axis. */
+    /**
+     * Walks from a blade toward its rod along the blade {@link TurbineBladeBlock#FACING} axis.
+     * Intermediate blades must share the same outward facing (same ownership chain).
+     */
     public static Optional<BlockPos> findRodFromBlade(Level level, BlockPos bladePos, BlockState bladeState) {
         if (!bladeState.is(ModBlocks.TURBINE_BLADE.get()) || !bladeState.hasProperty(TurbineBladeBlock.FACING)) {
             return Optional.empty();
         }
-        Direction towardRod = bladeState.getValue(TurbineBladeBlock.FACING).getOpposite();
+        Direction outward = bladeState.getValue(TurbineBladeBlock.FACING);
+        Direction towardRod = outward.getOpposite();
         BlockPos.MutableBlockPos scan = bladePos.mutable().move(towardRod);
         int cap = maxRing() + 1;
         for (int step = 0; step <= cap; step++) {
@@ -250,7 +369,7 @@ public final class TurbineBladePlacement {
             if (at.is(ModBlocks.TURBINE_ROD.get())) {
                 return Optional.of(scan.immutable());
             }
-            if (!at.is(ModBlocks.TURBINE_BLADE.get())) {
+            if (!isOwnedBladeAlong(at, outward)) {
                 return Optional.empty();
             }
             scan.move(towardRod);

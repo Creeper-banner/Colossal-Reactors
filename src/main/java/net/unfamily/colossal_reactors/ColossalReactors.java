@@ -112,6 +112,7 @@ public class ColossalReactors {
             modEventBus.addListener(RegisterMenuScreensEvent.class, ColossalClientSetup::registerMenuScreens);
             modEventBus.addListener(net.neoforged.neoforge.client.event.ModelEvent.RegisterLoaders.class, ColossalModelLoaders::registerModelLoaders);
             modEventBus.addListener(EntityRenderersEvent.RegisterRenderers.class, TurbineRotorClientRegistration::registerRenderers);
+            modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterColorHandlersEvent.BlockTintSources.class, net.unfamily.colossal_reactors.client.ReactorRodColors::register);
             modEventBus.addListener(net.neoforged.neoforge.client.event.ModelEvent.ModifyBakingResult.class, TurbineRotorClientRegistration::onModifyBakingResult);
         }
 
@@ -255,6 +256,7 @@ public class ColossalReactors {
 
     private void commonSetup(FMLCommonSetupEvent event) {
         NeoForge.EVENT_BUS.register(BuilderPreviewServerEvents.class);
+        net.unfamily.colossal_reactors.config.ColossalAcmRules.register();
         LOGGER.debug("Colossal Reactors common setup");
         LOGGER.info("Reactor validation debug (dev.001_reactor_validation_debug): {}", Config.REACTOR_VALIDATION_DEBUG.get());
         LOGGER.info("Reactor simulation debug (dev.002_reactor_simulation_debug): {}", Config.REACTOR_SIMULATION_DEBUG.get());

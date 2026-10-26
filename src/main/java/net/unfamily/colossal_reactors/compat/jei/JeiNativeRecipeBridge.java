@@ -11,6 +11,7 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import net.unfamily.colossal_reactors.Config;
 import net.unfamily.colossal_reactors.coolant.CoolantDefinition;
 import net.unfamily.colossal_reactors.coolant.CoolantLoader;
 import net.unfamily.colossal_reactors.crafting.ColossalJsonRecipe;
@@ -180,6 +181,10 @@ public final class JeiNativeRecipeBridge {
                 ElecCoilDefinition def = ElecCoilLoader.parseEntry(entry, idOf(holder).toString());
                 if (ElecCoilLoader.isVisibleInJei(def)) {
                     ElecCoilDefinition sanitized = DatapackSelectorValidator.sanitizeElecCoil(def);
+                    if (ElecCoilLoader.isAirOnlyDefinition(sanitized)) {
+                        double empty = Config.TURBINE_EMPTY_COIL_EFFICIENCY.get();
+                        sanitized = new ElecCoilDefinition(sanitized.validBlocks(), empty, empty);
+                    }
                     out.add(ElecCoilJeiRecipe.of(sanitized, childId(idOf(holder), i, entries.size())));
                 }
                 i++;

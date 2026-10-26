@@ -21,8 +21,33 @@ public final class ClientConfig {
                     "Read from client config in singleplayer/integrated; dedicated servers always update rod visuals. Default: false")
             .define("disable_rod_fill_visual_update", false);
 
+    public static final ModConfigSpec.ConfigValue<String> REACTOR_ROD_INSIDE_FALLBACK_COLOR = BUILDER
+            .comment("Fallback hex color for reactor rod inside fill when fuel JSON has no color. Default: #45c159")
+            .define("rod_inside_fallback_color", "#45c159");
+
     static {
         BUILDER.pop();
+    }
+
+    public static int getRodInsideFallbackColorRgb() {
+        return parseHexRgb(REACTOR_ROD_INSIDE_FALLBACK_COLOR.get(), 0x45c159);
+    }
+
+    public static int parseHexRgb(String raw, int fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        String s = raw.trim();
+        if (s.startsWith("#")) {
+            s = s.substring(1);
+        } else if (s.startsWith("0x") || s.startsWith("0X")) {
+            s = s.substring(2);
+        }
+        try {
+            return Integer.parseInt(s, 16) & 0xFFFFFF;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     static {

@@ -28,7 +28,7 @@ import java.util.List;
 public class FuelRecipeCategory implements IRecipeCategory<FuelJeiRecipe> {
 
     public static final Identifier UID = Identifier.fromNamespaceAndPath(ColossalReactors.MODID, "reactor_fuel");
-    private static final int WIDTH = 180;
+    private static final int WIDTH = 230;
     private static final int HEIGHT = 106;
 
     public static final IRecipeType<FuelJeiRecipe> RECIPE_TYPE = IRecipeType.create(UID, FuelJeiRecipe.class);
